@@ -3,6 +3,7 @@ package com.example.mygallery;
 import android.content.ContentResolver;
 import android.content.Intent;
 import android.content.IntentSender;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -38,6 +39,8 @@ public class FullscreenActivity extends AppCompatActivity {
 
         if (imageUris == null || imageUris.isEmpty()) {
             Toast.makeText(this, "이미지를 불러올 수 없습니다.", Toast.LENGTH_SHORT).show();
+            SharedPreferences prefs = getSharedPreferences("auth", MODE_PRIVATE);
+            prefs.edit().putBoolean("from_fullscreen", true).apply();
             finish();
             return;
         }
@@ -79,6 +82,14 @@ public class FullscreenActivity extends AppCompatActivity {
         }
     }
 
+    @Override
+    public void onBackPressed() {
+        SharedPreferences prefs = getSharedPreferences("auth", MODE_PRIVATE);
+        prefs.edit().putBoolean("from_fullscreen", true).apply();
+
+        super.onBackPressed();
+    }
+
     private void handleDeletion(int position, boolean success) {
         if (!success || position < 0 || position >= imageUris.size()) {
             Toast.makeText(this, "삭제 실패", Toast.LENGTH_SHORT).show();
@@ -93,6 +104,8 @@ public class FullscreenActivity extends AppCompatActivity {
 
         if (imageUris.isEmpty()) {
             Toast.makeText(this, "모든 사진이 삭제되었습니다.", Toast.LENGTH_SHORT).show();
+            SharedPreferences prefs = getSharedPreferences("auth", MODE_PRIVATE);
+            prefs.edit().putBoolean("from_fullscreen", true).apply();
             finish();
             return;
         }

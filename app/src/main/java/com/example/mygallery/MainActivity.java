@@ -2,6 +2,7 @@ package com.example.mygallery;
 
 import android.Manifest;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.net.Uri;
@@ -218,21 +219,30 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+
+        // 홈 버튼 등으로 앱을 빠져나갈 때만 인증 초기화
+        SharedPreferences prefs = getSharedPreferences("auth", MODE_PRIVATE);
+        prefs.edit().putBoolean("authenticated", false).apply();
+    }
+
+
+    @Override
     protected void onResume() {
         super.onResume();
 
-        boolean fromLock = getIntent().getBooleanExtra("from_lock", false);
+        SharedPreferences prefs = getSharedPreferences("auth", MODE_PRIVATE);
+        boolean isAuthenticated = prefs.getBoolean("authenticated", false);
+        boolean fromFullscreen = prefs.getBoolean("from_fullscreen", false);
 
-        if (fromLock) {
-            getIntent().removeExtra("from_lock");
-            return; // 인증 직후는 통과
+        if (!isAuthenticated && !fromFullscreen) {
+            Intent intent = new Intent(this, LockActivity.class);
+            startActivity(intent);
         }
 
-        // 무조건 재인증 유도
-        Intent intent = new Intent(this, LockActivity.class);
-        intent.putExtra("reauth", true);
-        startActivity(intent);
-        finish();
+        // 다시 초기화
+        prefs.edit().putBoolean("from_fullscreen", false).apply();
     }
 
     private boolean isDarkTheme() {

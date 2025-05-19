@@ -3,6 +3,8 @@ package com.example.mygallery;
 import android.content.Intent;
 import androidx.biometric.BiometricManager;
 import static androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG;
+
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -50,6 +52,13 @@ public class LockActivity extends AppCompatActivity {
                     @Override
                     public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
                         super.onAuthenticationSucceeded(result);
+
+                        // ✅ 인증 성공 처리
+                        SharedPreferences prefs = getSharedPreferences("auth", MODE_PRIVATE);
+                        prefs.edit().putBoolean("authenticated", true).apply();
+
+                        finish(); // LockActivity 닫기
+
                         Intent intent = new Intent(LockActivity.this, MainActivity.class);
                         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                         intent.putExtra("from_lock", true); // 인증 경로 표시
