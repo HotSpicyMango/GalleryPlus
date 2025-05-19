@@ -48,4 +48,5 @@
 ```gradle
 minifyEnabled true
 shrinkResources true
-proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'```
+proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+```
