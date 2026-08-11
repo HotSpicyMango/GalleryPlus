@@ -71,6 +71,7 @@ public class MainActivity extends AppCompatActivity {
             insetsController.setSystemBarsAppearance(appearance, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
         }
 
+        View titleContainer = findViewById(R.id.titleContainer);
         recyclerView = findViewById(R.id.recyclerView);
         MaterialButton sortButton = findViewById(R.id.sortButton);
         emptyStateLayout = findViewById(R.id.emptyStateLayout);
@@ -95,6 +96,8 @@ public class MainActivity extends AppCompatActivity {
         recyclerView.setItemAnimator(new androidx.recyclerview.widget.DefaultItemAnimator());
         imageAdapter = new ImageAdapter(this, imageList);
         recyclerView.setAdapter(imageAdapter);
+
+        titleContainer.setOnClickListener(v -> startActivity(new Intent(this, InfoActivity.class)));
 
         sortButton.setOnClickListener(v -> {
             isDescending = !isDescending;

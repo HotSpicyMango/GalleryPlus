@@ -18,9 +18,15 @@
         android:padding="12dp">
 
         <LinearLayout
+            android:id="@+id/titleContainer"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
             android:orientation="vertical">
 
             <TextView

@@ -4,14 +4,14 @@ plugins {
 
 android {
     namespace = "com.example.mygallery"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.mygallery"
         minSdk = 30
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.2 (BETA)"
+        versionCode = 2
+        versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
