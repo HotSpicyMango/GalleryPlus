@@ -20,8 +20,8 @@ import java.util.List;
 
 public class ImageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
-    private static final int TYPE_HEADER = 0;
-    private static final int TYPE_IMAGE = 1;
+    public static final int TYPE_HEADER = 0;
+    public static final int TYPE_IMAGE = 1;
 
     private final Context context;
     private final List<Object> items;
@@ -78,6 +78,7 @@ public class ImageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
                         v.getParent().requestDisallowInterceptTouchEvent(false);
                     }
                 }
+                v.performClick();
                 return false;
             });
 

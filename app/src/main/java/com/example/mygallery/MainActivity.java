@@ -33,6 +33,8 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -58,31 +60,21 @@ public class MainActivity extends AppCompatActivity {
                 WindowManager.LayoutParams.FLAG_SECURE
         );
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            final WindowInsetsController insetsController = getWindow().getInsetsController();
-            if (insetsController != null) {
-                int appearance = isDarkTheme() ? 0 : WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS;
-                insetsController.setSystemBarsAppearance(appearance, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
-            }
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            View decor = getWindow().getDecorView();
-            if (isDarkTheme()) {
-                decor.setSystemUiVisibility(0); // 기본 상태바 (아이콘 흰색)
-            } else {
-                decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR); // 아이콘 어둡게
-            }
+        final WindowInsetsController insetsController = getWindow().getInsetsController();
+        if (insetsController != null) {
+            int appearance = isDarkTheme() ? 0 : WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS;
+            insetsController.setSystemBarsAppearance(appearance, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
         }
 
         recyclerView = findViewById(R.id.recyclerView);
         SwitchCompat switchSort = findViewById(R.id.switchSort);
-        TextView titleText = findViewById(R.id.titleText);
 
 
         layoutManager = new GridLayoutManager(this, spanCount);
         layoutManager.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
             @Override
             public int getSpanSize(int position) {
-                if (imageAdapter != null && imageAdapter.getItemViewType(position) == 0) {
+                if (imageAdapter != null && imageAdapter.getItemViewType(position) == ImageAdapter.TYPE_HEADER) {
                     return spanCount; // 날짜 헤더는 전체 열 차지
                 } else {
                     return 1; // 이미지 썸네일은 1칸만 차지
@@ -122,17 +114,20 @@ public class MainActivity extends AppCompatActivity {
 
         recyclerView.setOnTouchListener((v, event) -> {
             scaleDetector.onTouchEvent(event);
+            if (event.getAction() == android.view.MotionEvent.ACTION_UP) {
+                v.performClick();
+            }
             return false;
         });
 
-        // ✅ Android 13 이상 권한 확인
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES)
-                    != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{Manifest.permission.READ_MEDIA_IMAGES},
-                        PERMISSION_REQUEST_CODE);
-                return;
-            }
+        // ✅ 권한 확인
+        String permission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                ? Manifest.permission.READ_MEDIA_IMAGES
+                : Manifest.permission.READ_EXTERNAL_STORAGE;
+
+        if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{permission}, PERMISSION_REQUEST_CODE);
+            return;
         }
 
         // ✅ 권한이 있으면 바로 이미지 로드
@@ -140,65 +135,71 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadImages() {
-        imageList.clear();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        executor.execute(() -> {
+            ArrayList<Object> newItems = new ArrayList<>();
+            String[] projection = new String[]{
+                    MediaStore.Images.Media._ID,
+                    MediaStore.Images.Media.DATE_ADDED
+            };
+            String sortOrder = isDescending
+                    ? MediaStore.Images.Media.DATE_ADDED + " DESC"
+                    : MediaStore.Images.Media.DATE_ADDED + " ASC";
 
-        String[] projection = new String[]{
-                MediaStore.Images.Media._ID,
-                MediaStore.Images.Media.DATE_ADDED
-        };
-        String sortOrder = isDescending
-                ? MediaStore.Images.Media.DATE_ADDED + " DESC"
-                : MediaStore.Images.Media.DATE_ADDED + " ASC";
+            Map<Date, List<Uri>> grouped = isDescending
+                    ? new TreeMap<>(Collections.reverseOrder())
+                    : new TreeMap<>();
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy년 M월 d일", Locale.getDefault());
 
-        Map<Date, List<Uri>> grouped = isDescending
-                ? new TreeMap<>(Collections.reverseOrder())
-                : new TreeMap<>();
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy년 M월 d일", Locale.getDefault());
+            try (android.database.Cursor cursor = getContentResolver().query(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    projection,
+                    null,
+                    null,
+                    sortOrder
+            )) {
+                if (cursor != null) {
+                    int idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID);
+                    int dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED);
 
-        try (android.database.Cursor cursor = getContentResolver().query(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                projection,
-                null,
-                null,
-                sortOrder
-        )) {
-            if (cursor != null) {
-                int idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID);
-                int dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED);
+                    while (cursor.moveToNext()) {
+                        long id = cursor.getLong(idColumn);
+                        long dateSeconds = cursor.getLong(dateColumn);
+                        long dateMillis = dateSeconds * 1000L;
 
-                while (cursor.moveToNext()) {
-                    long id = cursor.getLong(idColumn);
-                    long dateSeconds = cursor.getLong(dateColumn);
-                    long dateMillis = dateSeconds * 1000L;
+                        Calendar cal = Calendar.getInstance();
+                        cal.setTimeInMillis(dateMillis);
+                        cal.set(Calendar.HOUR_OF_DAY, 0);
+                        cal.set(Calendar.MINUTE, 0);
+                        cal.set(Calendar.SECOND, 0);
+                        cal.set(Calendar.MILLISECOND, 0);
+                        Date date = cal.getTime();
 
-                    Calendar cal = Calendar.getInstance();
-                    cal.setTimeInMillis(dateMillis);
-                    cal.set(Calendar.HOUR_OF_DAY, 0);
-                    cal.set(Calendar.MINUTE, 0);
-                    cal.set(Calendar.SECOND, 0);
-                    cal.set(Calendar.MILLISECOND, 0);
-                    Date date = cal.getTime();
+                        Uri uri = Uri.withAppendedPath(
+                                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                                String.valueOf(id)
+                        );
 
-                    Uri uri = Uri.withAppendedPath(
-                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                            String.valueOf(id)
-                    );
-
-                    grouped.putIfAbsent(date, new ArrayList<>());
-                    grouped.get(date).add(uri);
+                        grouped.putIfAbsent(date, new ArrayList<>());
+                        grouped.get(date).add(uri);
+                    }
                 }
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "이미지를 불러오는 중 오류 발생: " + e.getMessage(), Toast.LENGTH_LONG).show());
             }
-        } catch (Exception e) {
-            Toast.makeText(this, "이미지를 불러오는 중 오류 발생: " + e.getMessage(), Toast.LENGTH_LONG).show();
-        }
 
-        for (Map.Entry<Date, List<Uri>> entry : grouped.entrySet()) {
-            String dateKey = sdf.format(entry.getKey());
-            imageList.add(dateKey);
-            imageList.addAll(entry.getValue());
-        }
+            for (Map.Entry<Date, List<Uri>> entry : grouped.entrySet()) {
+                String dateKey = sdf.format(entry.getKey());
+                newItems.add(dateKey);
+                newItems.addAll(entry.getValue());
+            }
 
-        imageAdapter.notifyDataSetChanged();
+            runOnUiThread(() -> {
+                imageList.clear();
+                imageList.addAll(newItems);
+                imageAdapter.notifyDataSetChanged();
+            });
+        });
     }
 
     // ✅ 권한 요청 결과 처리
