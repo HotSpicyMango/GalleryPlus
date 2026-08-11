@@ -12,6 +12,8 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.widget.Toast;
 
@@ -45,10 +47,28 @@ public class GithubUpdateManager {
 
     private final Activity activity;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final SharedPreferences prefs;
     private long activeDownloadId = -1L;
     private File activeDownloadFile;
     private BroadcastReceiver downloadReceiver;
+    private boolean downloadHandled;
+    private final Runnable downloadStatusPoller = new Runnable() {
+        @Override
+        public void run() {
+            if (activeDownloadId == -1L || downloadHandled || activity.isFinishing() || activity.isDestroyed()) {
+                return;
+            }
+
+            int status = getDownloadStatus(activeDownloadId);
+            if (status == DownloadManager.STATUS_SUCCESSFUL || status == DownloadManager.STATUS_FAILED) {
+                handleDownloadComplete(activeDownloadId);
+                return;
+            }
+
+            mainHandler.postDelayed(this, 1000L);
+        }
+    };
 
     public GithubUpdateManager(Activity activity) {
         this.activity = activity;
@@ -72,6 +92,7 @@ public class GithubUpdateManager {
 
     public void release() {
         executor.shutdownNow();
+        mainHandler.removeCallbacks(downloadStatusPoller);
         unregisterDownloadReceiver();
     }
 
@@ -233,15 +254,22 @@ public class GithubUpdateManager {
                     .setDestinationUri(Uri.fromFile(activeDownloadFile));
 
             registerDownloadReceiver();
+            downloadHandled = false;
             activeDownloadId = downloadManager.enqueue(request);
             prefs.edit()
                     .putLong(KEY_ACTIVE_DOWNLOAD_ID, activeDownloadId)
                     .putString(KEY_ACTIVE_DOWNLOAD_FILE, activeDownloadFile.getAbsolutePath())
                     .apply();
+            startDownloadStatusPolling();
             showToast("업데이트 APK 다운로드를 시작했습니다.");
         } catch (Exception e) {
             showToast("다운로드 시작 실패: " + e.getMessage());
         }
+    }
+
+    private void startDownloadStatusPolling() {
+        mainHandler.removeCallbacks(downloadStatusPoller);
+        mainHandler.postDelayed(downloadStatusPoller, 1000L);
     }
 
     private void registerDownloadReceiver() {
@@ -279,32 +307,21 @@ public class GithubUpdateManager {
     }
 
     private void handleDownloadComplete(long downloadId) {
+        if (downloadHandled) {
+            return;
+        }
+        downloadHandled = true;
+        mainHandler.removeCallbacks(downloadStatusPoller);
         unregisterDownloadReceiver();
 
-        DownloadManager downloadManager = (DownloadManager) activity.getSystemService(Context.DOWNLOAD_SERVICE);
-        if (downloadManager == null) {
-            showToast("다운로드 상태를 확인할 수 없습니다.");
+        int status = getDownloadStatus(downloadId);
+        if (status != DownloadManager.STATUS_SUCCESSFUL) {
+            showToast("업데이트 APK 다운로드에 실패했습니다.");
+            clearActiveDownload();
             return;
         }
 
-        DownloadManager.Query query = new DownloadManager.Query().setFilterById(downloadId);
-        try (Cursor cursor = downloadManager.query(query)) {
-            if (cursor == null || !cursor.moveToFirst()) {
-                showToast("다운로드 결과를 찾을 수 없습니다.");
-                return;
-            }
-
-            int status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
-            if (status != DownloadManager.STATUS_SUCCESSFUL) {
-                showToast("업데이트 APK 다운로드에 실패했습니다.");
-                return;
-            }
-        }
-
-        prefs.edit()
-                .remove(KEY_ACTIVE_DOWNLOAD_ID)
-                .remove(KEY_ACTIVE_DOWNLOAD_FILE)
-                .apply();
+        clearActiveDownload();
 
         if (activeDownloadFile == null || !activeDownloadFile.exists()) {
             showToast("다운로드된 APK 파일을 찾을 수 없습니다.");
@@ -312,6 +329,30 @@ public class GithubUpdateManager {
         }
 
         installApk(activeDownloadFile);
+    }
+
+    private int getDownloadStatus(long downloadId) {
+        DownloadManager downloadManager = (DownloadManager) activity.getSystemService(Context.DOWNLOAD_SERVICE);
+        if (downloadManager == null) {
+            return DownloadManager.STATUS_FAILED;
+        }
+
+        DownloadManager.Query query = new DownloadManager.Query().setFilterById(downloadId);
+        try (Cursor cursor = downloadManager.query(query)) {
+            if (cursor == null || !cursor.moveToFirst()) {
+                return DownloadManager.STATUS_FAILED;
+            }
+
+            return cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+        }
+    }
+
+    private void clearActiveDownload() {
+        prefs.edit()
+                .remove(KEY_ACTIVE_DOWNLOAD_ID)
+                .remove(KEY_ACTIVE_DOWNLOAD_FILE)
+                .apply();
+        activeDownloadId = -1L;
     }
 
     private void installApk(File apkFile) {
