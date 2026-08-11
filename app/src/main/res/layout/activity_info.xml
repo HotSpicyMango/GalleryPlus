@@ -15,6 +15,7 @@
             android:id="@+id/infoBackButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
+            android:layout_marginStart="-16dp"
             android:background="@android:color/transparent"
             android:contentDescription="@string/back"
             android:padding="12dp"
