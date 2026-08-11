@@ -83,7 +83,6 @@ public class MainActivity extends AppCompatActivity {
         emptyMessageText = findViewById(R.id.emptyMessageText);
         emptyActionButton = findViewById(R.id.emptyActionButton);
         githubUpdateManager = new GithubUpdateManager(this);
-        githubUpdateManager.checkForUpdatesIfNeeded();
 
 
         layoutManager = new GridLayoutManager(this, spanCount);
@@ -288,6 +287,10 @@ public class MainActivity extends AppCompatActivity {
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
             startActivity(intent);
             return;
+        }
+
+        if (githubUpdateManager != null) {
+            githubUpdateManager.checkForUpdatesIfNeeded();
         }
 
         if (lacksImagePermission()) {
