@@ -2,13 +2,15 @@ package com.example.mygallery;
 
 import android.content.Intent;
 import android.content.IntentSender;
-import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.view.View;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.TextView;
@@ -16,6 +18,7 @@ import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.widget.ViewPager2;
 
 import java.util.ArrayList;
@@ -31,6 +34,7 @@ public class FullscreenActivity extends AppCompatActivity {
     private View bottomScrim;
     private ImageButton backButton;
     private boolean controlsVisible = true;
+    private boolean imageZoomed = false;
 
     private static final int DELETE_REQUEST_CODE = 202;
 
@@ -38,6 +42,11 @@ public class FullscreenActivity extends AppCompatActivity {
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_fullscreen);
+        getWindow().setFlags(
+                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_SECURE
+        );
+        getWindow().setDecorFitsSystemWindows(false);
         getWindow().setStatusBarColor(Color.TRANSPARENT);
         getWindow().setNavigationBarColor(Color.BLACK);
 
@@ -53,8 +62,6 @@ public class FullscreenActivity extends AppCompatActivity {
 
         if (imageUris == null || imageUris.isEmpty()) {
             Toast.makeText(this, "이미지를 불러올 수 없습니다.", Toast.LENGTH_SHORT).show();
-            SharedPreferences prefs = getSharedPreferences("auth", MODE_PRIVATE);
-            prefs.edit().putBoolean("from_fullscreen", true).apply();
             finish();
             return;
         }
@@ -106,11 +113,13 @@ public class FullscreenActivity extends AppCompatActivity {
     }
 
     @Override
-    public void onBackPressed() {
-        SharedPreferences prefs = getSharedPreferences("auth", MODE_PRIVATE);
-        prefs.edit().putBoolean("from_fullscreen", true).apply();
+    protected void onResume() {
+        super.onResume();
 
-        super.onBackPressed();
+        if (AuthState.shouldRequireUnlock()) {
+            Intent intent = new Intent(this, LockActivity.class);
+            startActivity(intent);
+        }
     }
 
     private void handleDeletion(int position, boolean success) {
@@ -127,16 +136,17 @@ public class FullscreenActivity extends AppCompatActivity {
 
         if (imageUris.isEmpty()) {
             Toast.makeText(this, "모든 사진이 삭제되었습니다.", Toast.LENGTH_SHORT).show();
-            SharedPreferences prefs = getSharedPreferences("auth", MODE_PRIVATE);
-            prefs.edit().putBoolean("from_fullscreen", true).apply();
             finish();
             return;
         }
 
         int newPosition = Math.max(0, position - 1);
         viewPager.setCurrentItem(newPosition, false);
-        viewPager.getAdapter().notifyItemRemoved(position);
-        viewPager.getAdapter().notifyItemRangeChanged(position, imageUris.size());
+        RecyclerView.Adapter<?> adapter = viewPager.getAdapter();
+        if (adapter != null) {
+            adapter.notifyItemRemoved(position);
+            adapter.notifyItemRangeChanged(position, imageUris.size());
+        }
         updateImageCounter(newPosition);
     }
 
@@ -148,15 +158,39 @@ public class FullscreenActivity extends AppCompatActivity {
         setControlsVisible(!controlsVisible);
     }
 
+    public void setImageZoomed(boolean zoomed) {
+        if (imageZoomed == zoomed) {
+            return;
+        }
+
+        imageZoomed = zoomed;
+        setControlsVisible(!zoomed);
+    }
+
     private void setControlsVisible(boolean visible) {
         controlsVisible = visible;
         float targetAlpha = visible ? 1f : 0f;
 
+        setSystemBarsVisible(visible);
         animateControl(topScrim, targetAlpha, visible);
         animateControl(bottomScrim, targetAlpha, visible);
         animateControl(backButton, targetAlpha, visible);
         animateControl(imageCounterText, targetAlpha, visible);
         animateControl(deleteButton, targetAlpha, visible);
+    }
+
+    private void setSystemBarsVisible(boolean visible) {
+        WindowInsetsController controller = getWindow().getInsetsController();
+        if (controller == null) {
+            return;
+        }
+
+        if (visible) {
+            controller.show(WindowInsets.Type.systemBars());
+        } else {
+            controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            controller.hide(WindowInsets.Type.systemBars());
+        }
     }
 
     private void animateControl(View view, float targetAlpha, boolean visible) {
@@ -185,6 +219,6 @@ public class FullscreenActivity extends AppCompatActivity {
         }
 
         int safePosition = Math.max(0, Math.min(position, imageUris.size() - 1));
-        imageCounterText.setText((safePosition + 1) + " / " + imageUris.size());
+        imageCounterText.setText(getString(R.string.image_counter_format, safePosition + 1, imageUris.size()));
     }
 }

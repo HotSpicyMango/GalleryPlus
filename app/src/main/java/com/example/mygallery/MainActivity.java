@@ -2,7 +2,6 @@ package com.example.mygallery;
 
 import android.Manifest;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.net.Uri;
@@ -13,16 +12,17 @@ import android.view.ScaleGestureDetector;
 import android.view.View;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.core.content.ContextCompat;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.SwitchCompat;
 import androidx.core.app.ActivityCompat;
 import androidx.recyclerview.widget.GridLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
+
+import com.google.android.material.button.MaterialButton;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -40,9 +40,14 @@ public class MainActivity extends AppCompatActivity {
 
     private static final int PERMISSION_REQUEST_CODE = 1001;
 
-    private RecyclerView recyclerView;
+    private ClickableRecyclerView recyclerView;
     private ImageAdapter imageAdapter;
-    private ArrayList<Object> imageList = new ArrayList<>();
+    private final ArrayList<Object> imageList = new ArrayList<>();
+    private LinearLayout emptyStateLayout;
+    private TextView photoCountText;
+    private TextView emptyTitleText;
+    private TextView emptyMessageText;
+    private MaterialButton emptyActionButton;
     private boolean isDescending = true;
 
     private GridLayoutManager layoutManager;
@@ -67,7 +72,12 @@ public class MainActivity extends AppCompatActivity {
         }
 
         recyclerView = findViewById(R.id.recyclerView);
-        SwitchCompat switchSort = findViewById(R.id.switchSort);
+        MaterialButton sortButton = findViewById(R.id.sortButton);
+        emptyStateLayout = findViewById(R.id.emptyStateLayout);
+        photoCountText = findViewById(R.id.photoCountText);
+        emptyTitleText = findViewById(R.id.emptyTitleText);
+        emptyMessageText = findViewById(R.id.emptyMessageText);
+        emptyActionButton = findViewById(R.id.emptyActionButton);
 
 
         layoutManager = new GridLayoutManager(this, spanCount);
@@ -86,11 +96,14 @@ public class MainActivity extends AppCompatActivity {
         imageAdapter = new ImageAdapter(this, imageList);
         recyclerView.setAdapter(imageAdapter);
 
-        switchSort.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            isDescending = isChecked;
-            switchSort.setText(isChecked ? "최신순" : "오래된순");
+        sortButton.setOnClickListener(v -> {
+            isDescending = !isDescending;
+            sortButton.setText(isDescending ? R.string.sort_latest : R.string.sort_oldest);
             loadImages();
         });
+
+        emptyActionButton.setOnClickListener(v ->
+                ActivityCompat.requestPermissions(this, new String[]{getImagePermission()}, PERMISSION_REQUEST_CODE));
 
         ScaleGestureDetector scaleDetector = new ScaleGestureDetector(this, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
             @Override
@@ -101,12 +114,12 @@ public class MainActivity extends AppCompatActivity {
                     spanCount--;
                     layoutManager.setSpanCount(spanCount);
                     recyclerView.scheduleLayoutAnimation();
-                    imageAdapter.notifyDataSetChanged();
+                    notifyVisibleGridItemsChanged();
                 } else if (scale < 0.99f && spanCount < MAX_SPAN) {
                     spanCount++;
                     layoutManager.setSpanCount(spanCount);
                     recyclerView.scheduleLayoutAnimation();
-                    imageAdapter.notifyDataSetChanged();
+                    notifyVisibleGridItemsChanged();
                 }
                 return true;
             }
@@ -121,9 +134,9 @@ public class MainActivity extends AppCompatActivity {
         });
 
         // ✅ 권한 확인
-        if (!hasImagePermission()) {
+        if (lacksImagePermission()) {
+            showPermissionEmptyState();
             ActivityCompat.requestPermissions(this, new String[]{getImagePermission()}, PERMISSION_REQUEST_CODE);
-            return;
         }
     }
 
@@ -133,11 +146,13 @@ public class MainActivity extends AppCompatActivity {
             ArrayList<Object> newItems = new ArrayList<>();
             String[] projection = new String[]{
                     MediaStore.Images.Media._ID,
-                    MediaStore.Images.Media.DATE_ADDED
+                    MediaStore.Images.Media.DATE_TAKEN,
+                    MediaStore.Images.Media.DATE_ADDED,
+                    MediaStore.Images.Media.DATE_MODIFIED
             };
             String sortOrder = isDescending
-                    ? MediaStore.Images.Media.DATE_ADDED + " DESC"
-                    : MediaStore.Images.Media.DATE_ADDED + " ASC";
+                    ? MediaStore.Images.Media.DATE_TAKEN + " DESC, " + MediaStore.Images.Media.DATE_ADDED + " DESC"
+                    : MediaStore.Images.Media.DATE_TAKEN + " ASC, " + MediaStore.Images.Media.DATE_ADDED + " ASC";
 
             Map<Date, List<Uri>> grouped = isDescending
                     ? new TreeMap<>(Collections.reverseOrder())
@@ -153,12 +168,13 @@ public class MainActivity extends AppCompatActivity {
             )) {
                 if (cursor != null) {
                     int idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID);
-                    int dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED);
+                    int dateTakenColumn = cursor.getColumnIndex(MediaStore.Images.Media.DATE_TAKEN);
+                    int dateAddedColumn = cursor.getColumnIndex(MediaStore.Images.Media.DATE_ADDED);
+                    int dateModifiedColumn = cursor.getColumnIndex(MediaStore.Images.Media.DATE_MODIFIED);
 
                     while (cursor.moveToNext()) {
                         long id = cursor.getLong(idColumn);
-                        long dateSeconds = cursor.getLong(dateColumn);
-                        long dateMillis = dateSeconds * 1000L;
+                        long dateMillis = getBestImageDateMillis(cursor, dateTakenColumn, dateAddedColumn, dateModifiedColumn);
 
                         Calendar cal = Calendar.getInstance();
                         cal.setTimeInMillis(dateMillis);
@@ -173,8 +189,7 @@ public class MainActivity extends AppCompatActivity {
                                 String.valueOf(id)
                         );
 
-                        grouped.putIfAbsent(date, new ArrayList<>());
-                        grouped.get(date).add(uri);
+                        grouped.computeIfAbsent(date, unused -> new ArrayList<>()).add(uri);
                     }
                 }
             } catch (Exception e) {
@@ -182,17 +197,52 @@ public class MainActivity extends AppCompatActivity {
             }
 
             for (Map.Entry<Date, List<Uri>> entry : grouped.entrySet()) {
+                List<Uri> uris = entry.getValue();
                 String dateKey = sdf.format(entry.getKey());
-                newItems.add(dateKey);
-                newItems.addAll(entry.getValue());
+                newItems.add(new HeaderItem(dateKey, uris.size()));
+                newItems.addAll(uris);
             }
 
+            int totalImageCount = 0;
+            for (List<Uri> uris : grouped.values()) {
+                totalImageCount += uris.size();
+            }
+            final int finalTotalImageCount = totalImageCount;
+
             runOnUiThread(() -> {
-                imageList.clear();
-                imageList.addAll(newItems);
-                imageAdapter.notifyDataSetChanged();
+                replaceItems(newItems);
+                updatePhotoCount(finalTotalImageCount);
+                showGalleryState(!newItems.isEmpty());
             });
         });
+    }
+
+    private long getBestImageDateMillis(android.database.Cursor cursor,
+                                        int dateTakenColumn,
+                                        int dateAddedColumn,
+                                        int dateModifiedColumn) {
+        if (dateTakenColumn >= 0) {
+            long dateTakenMillis = cursor.getLong(dateTakenColumn);
+            if (dateTakenMillis > 0) {
+                return dateTakenMillis;
+            }
+        }
+
+        if (dateAddedColumn >= 0) {
+            long dateAddedSeconds = cursor.getLong(dateAddedColumn);
+            if (dateAddedSeconds > 0) {
+                return dateAddedSeconds * 1000L;
+            }
+        }
+
+        if (dateModifiedColumn >= 0) {
+            long dateModifiedSeconds = cursor.getLong(dateModifiedColumn);
+            if (dateModifiedSeconds > 0) {
+                return dateModifiedSeconds * 1000L;
+            }
+        }
+
+        return System.currentTimeMillis();
     }
 
     // ✅ 권한 요청 결과 처리
@@ -207,40 +257,28 @@ public class MainActivity extends AppCompatActivity {
                     grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 loadImages(); // 권한 승인 시 실행
             } else {
-                Toast.makeText(this, "사진을 불러오기 위해 권한이 필요합니다.", Toast.LENGTH_SHORT).show();
+                showPermissionEmptyState();
+                Toast.makeText(this, R.string.permission_required_toast, Toast.LENGTH_SHORT).show();
             }
         }
     }
 
     @Override
-    protected void onUserLeaveHint() {
-        super.onUserLeaveHint();
-
-        // 홈 버튼 등으로 앱을 빠져나갈 때만 인증 초기화
-        SharedPreferences prefs = getSharedPreferences("auth", MODE_PRIVATE);
-        prefs.edit().putBoolean("authenticated", false).apply();
-    }
-
-
-    @Override
     protected void onResume() {
         super.onResume();
 
-        SharedPreferences prefs = getSharedPreferences("auth", MODE_PRIVATE);
-        boolean isAuthenticated = prefs.getBoolean("authenticated", false);
-        boolean fromFullscreen = prefs.getBoolean("from_fullscreen", false);
-
-        if (!isAuthenticated && !fromFullscreen) {
+        if (AuthState.shouldRequireUnlock()) {
             Intent intent = new Intent(this, LockActivity.class);
             startActivity(intent);
+            return;
         }
 
-        // 다시 초기화
-        prefs.edit().putBoolean("from_fullscreen", false).apply();
-
-        if (hasImagePermission()) {
-            loadImages();
+        if (lacksImagePermission()) {
+            showPermissionEmptyState();
+            return;
         }
+
+        loadImages();
     }
 
     private boolean isDarkTheme() {
@@ -254,7 +292,51 @@ public class MainActivity extends AppCompatActivity {
                 : Manifest.permission.READ_EXTERNAL_STORAGE;
     }
 
-    private boolean hasImagePermission() {
-        return ContextCompat.checkSelfPermission(this, getImagePermission()) == PackageManager.PERMISSION_GRANTED;
+    private boolean lacksImagePermission() {
+        return ContextCompat.checkSelfPermission(this, getImagePermission()) != PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void showGalleryState(boolean hasImages) {
+        recyclerView.setVisibility(hasImages ? View.VISIBLE : View.GONE);
+        emptyStateLayout.setVisibility(hasImages ? View.GONE : View.VISIBLE);
+        emptyActionButton.setVisibility(View.GONE);
+
+        if (!hasImages) {
+            emptyTitleText.setText(R.string.empty_no_photos_title);
+            emptyMessageText.setText(R.string.empty_no_photos_message);
+        }
+    }
+
+    private void showPermissionEmptyState() {
+        recyclerView.setVisibility(View.GONE);
+        emptyStateLayout.setVisibility(View.VISIBLE);
+        emptyTitleText.setText(R.string.empty_permission_title);
+        emptyMessageText.setText(R.string.empty_permission_message);
+        emptyActionButton.setVisibility(View.VISIBLE);
+        updatePhotoCount(0);
+    }
+
+    private void updatePhotoCount(int count) {
+        photoCountText.setText(getString(R.string.photo_count_format, count));
+    }
+
+    private void notifyVisibleGridItemsChanged() {
+        int itemCount = imageAdapter.getItemCount();
+        if (itemCount > 0) {
+            imageAdapter.notifyItemRangeChanged(0, itemCount);
+        }
+    }
+
+    private void replaceItems(ArrayList<Object> newItems) {
+        int oldSize = imageList.size();
+        if (oldSize > 0) {
+            imageList.clear();
+            imageAdapter.notifyItemRangeRemoved(0, oldSize);
+        }
+
+        imageList.addAll(newItems);
+        if (!newItems.isEmpty()) {
+            imageAdapter.notifyItemRangeInserted(0, newItems.size());
+        }
     }
 }

@@ -14,6 +14,7 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,7 +34,7 @@ public class ImageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
 
     @Override
     public int getItemViewType(int position) {
-        return (items.get(position) instanceof String) ? TYPE_HEADER : TYPE_IMAGE;
+        return (items.get(position) instanceof HeaderItem) ? TYPE_HEADER : TYPE_IMAGE;
     }
 
     @NonNull
@@ -51,14 +52,20 @@ public class ImageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
     @Override
     public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
         if (holder instanceof HeaderViewHolder) {
-            String dateText = (String) items.get(position);
-            ((HeaderViewHolder) holder).headerText.setText(dateText);
+            HeaderItem headerItem = (HeaderItem) items.get(position);
+            HeaderViewHolder headerHolder = (HeaderViewHolder) holder;
+            headerHolder.headerText.setText(headerItem.getDateText());
+            headerHolder.headerCountText.setText(
+                    context.getString(R.string.image_count_format, headerItem.getImageCount())
+            );
         } else {
             Uri imageUri = (Uri) items.get(position);
             ImageViewHolder imageHolder = (ImageViewHolder) holder;
 
             Glide.with(context)
                     .load(imageUri)
+                    .placeholder(R.drawable.bg_thumbnail_placeholder)
+                    .transition(DrawableTransitionOptions.withCrossFade())
                     .centerCrop()
                     .into(imageHolder.imageView);
 
@@ -68,19 +75,6 @@ public class ImageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
                     .scaleY(targetScale)
                     .setDuration(150)
                     .start();
-
-            imageHolder.imageView.setOnTouchListener((v, event) -> {
-                if (imageHolder.imageView instanceof com.github.chrisbanes.photoview.PhotoView) {
-                    com.github.chrisbanes.photoview.PhotoView photoView = (com.github.chrisbanes.photoview.PhotoView) imageHolder.imageView;
-                    if (photoView.getScale() > photoView.getMinimumScale()) {
-                        v.getParent().requestDisallowInterceptTouchEvent(true);
-                    } else {
-                        v.getParent().requestDisallowInterceptTouchEvent(false);
-                    }
-                }
-                v.performClick();
-                return false;
-            });
 
             imageHolder.itemView.setOnClickListener(v -> {
                 int pos = holder.getAdapterPosition();
@@ -122,10 +116,12 @@ public class ImageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
 
     public static class HeaderViewHolder extends RecyclerView.ViewHolder {
         TextView headerText;
+        TextView headerCountText;
 
         public HeaderViewHolder(@NonNull View itemView) {
             super(itemView);
             headerText = itemView.findViewById(R.id.headerText);
+            headerCountText = itemView.findViewById(R.id.headerCountText);
         }
     }
 

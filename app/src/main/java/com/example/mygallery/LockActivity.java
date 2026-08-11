@@ -2,12 +2,8 @@ package com.example.mygallery;
 
 import android.content.Intent;
 import androidx.biometric.BiometricManager;
-import static androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG;
 
-import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -32,6 +28,7 @@ public class LockActivity extends AppCompatActivity {
         );
         if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
             Toast.makeText(this, "기기 보안 설정이 필요합니다", Toast.LENGTH_LONG).show();
+            AuthState.lock();
             startActivity(new Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS));
             finish();
             return;
@@ -53,25 +50,19 @@ public class LockActivity extends AppCompatActivity {
                     public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
                         super.onAuthenticationSucceeded(result);
 
-                        // ✅ 인증 성공 처리
-                        SharedPreferences prefs = getSharedPreferences("auth", MODE_PRIVATE);
-                        prefs.edit().putBoolean("authenticated", true).apply();
-
-                        finish(); // LockActivity 닫기
+                        AuthState.unlock();
 
                         Intent intent = new Intent(LockActivity.this, MainActivity.class);
                         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                         intent.putExtra("from_lock", true); // 인증 경로 표시
                         startActivity(intent);
-
-                        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                            finish(); // 인증 성공 후 약간 딜레이 주고 종료
-                        }, 300);
+                        finish(); // LockActivity 닫기
                     }
 
                     @Override
                     public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
                         super.onAuthenticationError(errorCode, errString);
+                        AuthState.lock();
                         finish(); // 인증 취소 시 종료
                     }
 

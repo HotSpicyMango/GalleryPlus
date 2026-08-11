@@ -51,8 +51,11 @@ public class ImagePagerAdapter extends RecyclerView.Adapter<ImagePagerAdapter.Vi
 
             @Override
             public boolean onDoubleTap(MotionEvent e) {
-                if (holder.photoView.getScale() > holder.photoView.getMinimumScale()) {
-                    holder.photoView.setScale(holder.photoView.getMinimumScale(), e.getX(), e.getY(), true);
+                float minScale = holder.photoView.getMinimumScale();
+                if (holder.photoView.getScale() > minScale) {
+                    holder.photoView.setScale(minScale, e.getX(), e.getY(), true);
+                } else {
+                    holder.photoView.setScale(minScale * 2.5f, e.getX(), e.getY(), true);
                 }
                 return true;
             }
@@ -65,7 +68,9 @@ public class ImagePagerAdapter extends RecyclerView.Adapter<ImagePagerAdapter.Vi
                 float minScale = holder.photoView.getMinimumScale();
 
                 // 확대된 상태면 ViewPager 스와이프 비활성화
-                activity.getViewPager().setUserInputEnabled(scale <= minScale);
+                boolean zoomed = scale > minScale;
+                activity.getViewPager().setUserInputEnabled(!zoomed);
+                activity.setImageZoomed(zoomed);
             }
         });
     }
