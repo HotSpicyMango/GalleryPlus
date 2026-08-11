@@ -1,14 +1,17 @@
 package com.example.mygallery;
 
-import android.content.ContentResolver;
 import android.content.Intent;
 import android.content.IntentSender;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
+import android.view.View;
 import android.widget.Button;
+import android.widget.ImageButton;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
@@ -23,6 +26,11 @@ public class FullscreenActivity extends AppCompatActivity {
     private int startPosition;
     private ViewPager2 viewPager;
     private Button deleteButton;
+    private TextView imageCounterText;
+    private View topScrim;
+    private View bottomScrim;
+    private ImageButton backButton;
+    private boolean controlsVisible = true;
 
     private static final int DELETE_REQUEST_CODE = 202;
 
@@ -30,9 +38,15 @@ public class FullscreenActivity extends AppCompatActivity {
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_fullscreen);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(Color.BLACK);
 
         viewPager = findViewById(R.id.viewPager);
         deleteButton = findViewById(R.id.deleteButton);
+        backButton = findViewById(R.id.backButton);
+        imageCounterText = findViewById(R.id.imageCounterText);
+        topScrim = findViewById(R.id.topScrim);
+        bottomScrim = findViewById(R.id.bottomScrim);
 
         imageUris = getIntent().getParcelableArrayListExtra("image_uris");
         startPosition = getIntent().getIntExtra("start_position", 0);
@@ -48,6 +62,16 @@ public class FullscreenActivity extends AppCompatActivity {
         ImagePagerAdapter adapter = new ImagePagerAdapter(this, imageUris);
         viewPager.setAdapter(adapter);
         viewPager.setCurrentItem(startPosition, false);
+        updateImageCounter(startPosition);
+
+        viewPager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
+            @Override
+            public void onPageSelected(int position) {
+                updateImageCounter(position);
+            }
+        });
+
+        backButton.setOnClickListener(v -> onBackPressed());
 
         deleteButton.setOnClickListener(v -> {
             int position = viewPager.getCurrentItem();
@@ -55,7 +79,6 @@ public class FullscreenActivity extends AppCompatActivity {
             if (position < 0 || position >= imageUris.size()) return;
 
             Uri imageUri = imageUris.get(position);
-            ContentResolver resolver = getContentResolver();
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 try {
@@ -114,9 +137,54 @@ public class FullscreenActivity extends AppCompatActivity {
         viewPager.setCurrentItem(newPosition, false);
         viewPager.getAdapter().notifyItemRemoved(position);
         viewPager.getAdapter().notifyItemRangeChanged(position, imageUris.size());
+        updateImageCounter(newPosition);
     }
 
     public ViewPager2 getViewPager() {
         return viewPager;
+    }
+
+    public void toggleControls() {
+        setControlsVisible(!controlsVisible);
+    }
+
+    private void setControlsVisible(boolean visible) {
+        controlsVisible = visible;
+        float targetAlpha = visible ? 1f : 0f;
+
+        animateControl(topScrim, targetAlpha, visible);
+        animateControl(bottomScrim, targetAlpha, visible);
+        animateControl(backButton, targetAlpha, visible);
+        animateControl(imageCounterText, targetAlpha, visible);
+        animateControl(deleteButton, targetAlpha, visible);
+    }
+
+    private void animateControl(View view, float targetAlpha, boolean visible) {
+        if (view == null) {
+            return;
+        }
+
+        if (visible) {
+            view.setVisibility(View.VISIBLE);
+        }
+
+        view.animate()
+                .alpha(targetAlpha)
+                .setDuration(160)
+                .withEndAction(() -> {
+                    if (!visible) {
+                        view.setVisibility(View.GONE);
+                    }
+                })
+                .start();
+    }
+
+    private void updateImageCounter(int position) {
+        if (imageCounterText == null || imageUris == null || imageUris.isEmpty()) {
+            return;
+        }
+
+        int safePosition = Math.max(0, Math.min(position, imageUris.size() - 1));
+        imageCounterText.setText((safePosition + 1) + " / " + imageUris.size());
     }
 }

@@ -121,17 +121,10 @@ public class MainActivity extends AppCompatActivity {
         });
 
         // ✅ 권한 확인
-        String permission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-                ? Manifest.permission.READ_MEDIA_IMAGES
-                : Manifest.permission.READ_EXTERNAL_STORAGE;
-
-        if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{permission}, PERMISSION_REQUEST_CODE);
+        if (!hasImagePermission()) {
+            ActivityCompat.requestPermissions(this, new String[]{getImagePermission()}, PERMISSION_REQUEST_CODE);
             return;
         }
-
-        // ✅ 권한이 있으면 바로 이미지 로드
-        loadImages();
     }
 
     private void loadImages() {
@@ -244,10 +237,24 @@ public class MainActivity extends AppCompatActivity {
 
         // 다시 초기화
         prefs.edit().putBoolean("from_fullscreen", false).apply();
+
+        if (hasImagePermission()) {
+            loadImages();
+        }
     }
 
     private boolean isDarkTheme() {
         int nightModeFlags = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
         return nightModeFlags == Configuration.UI_MODE_NIGHT_YES;
+    }
+
+    private String getImagePermission() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                ? Manifest.permission.READ_MEDIA_IMAGES
+                : Manifest.permission.READ_EXTERNAL_STORAGE;
+    }
+
+    private boolean hasImagePermission() {
+        return ContextCompat.checkSelfPermission(this, getImagePermission()) == PackageManager.PERMISSION_GRANTED;
     }
 }

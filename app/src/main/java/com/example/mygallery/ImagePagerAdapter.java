@@ -41,6 +41,15 @@ public class ImagePagerAdapter extends RecyclerView.Adapter<ImagePagerAdapter.Vi
         // ✅ 더블탭으로 '확대' 막고, '축소'만 허용
         holder.photoView.setOnDoubleTapListener(new GestureDetector.SimpleOnGestureListener() {
             @Override
+            public boolean onSingleTapConfirmed(MotionEvent e) {
+                if (context instanceof FullscreenActivity) {
+                    ((FullscreenActivity) context).toggleControls();
+                    return true;
+                }
+                return false;
+            }
+
+            @Override
             public boolean onDoubleTap(MotionEvent e) {
                 if (holder.photoView.getScale() > holder.photoView.getMinimumScale()) {
                     holder.photoView.setScale(holder.photoView.getMinimumScale(), e.getX(), e.getY(), true);
