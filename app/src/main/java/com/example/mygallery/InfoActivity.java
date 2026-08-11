@@ -9,7 +9,11 @@ import android.widget.TextView;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.google.android.material.button.MaterialButton;
+
 public class InfoActivity extends AppCompatActivity {
+    private GithubUpdateManager githubUpdateManager;
+
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -21,9 +25,12 @@ public class InfoActivity extends AppCompatActivity {
 
         ImageButton backButton = findViewById(R.id.infoBackButton);
         TextView versionText = findViewById(R.id.infoVersionText);
+        MaterialButton checkUpdateButton = findViewById(R.id.checkUpdateButton);
+        githubUpdateManager = new GithubUpdateManager(this);
 
         backButton.setOnClickListener(v -> finish());
         versionText.setText(getString(R.string.info_version_format, getVersionName()));
+        checkUpdateButton.setOnClickListener(v -> githubUpdateManager.checkForUpdatesManually());
     }
 
     @Override
@@ -42,6 +49,14 @@ public class InfoActivity extends AppCompatActivity {
             return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
         } catch (Exception e) {
             return getString(R.string.unknown_version);
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (githubUpdateManager != null) {
+            githubUpdateManager.release();
         }
     }
 }

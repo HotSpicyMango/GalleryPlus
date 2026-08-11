@@ -38,6 +38,15 @@
             android:textColor="?android:attr/textColorSecondary"
             android:textSize="14sp" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/checkUpdateButton"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginTop="16dp"
+            android:text="@string/check_update"
+            app:icon="@drawable/ic_sort_24"
+            app:iconGravity="textStart" />
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

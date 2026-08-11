@@ -48,6 +48,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView emptyTitleText;
     private TextView emptyMessageText;
     private MaterialButton emptyActionButton;
+    private GithubUpdateManager githubUpdateManager;
     private boolean isDescending = true;
     private final ExecutorService imageLoadExecutor = Executors.newSingleThreadExecutor();
     private int imageLoadGeneration = 0;
@@ -81,6 +82,8 @@ public class MainActivity extends AppCompatActivity {
         emptyTitleText = findViewById(R.id.emptyTitleText);
         emptyMessageText = findViewById(R.id.emptyMessageText);
         emptyActionButton = findViewById(R.id.emptyActionButton);
+        githubUpdateManager = new GithubUpdateManager(this);
+        githubUpdateManager.checkForUpdatesIfNeeded();
 
 
         layoutManager = new GridLayoutManager(this, spanCount);
@@ -298,6 +301,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (githubUpdateManager != null) {
+            githubUpdateManager.release();
+        }
         imageLoadExecutor.shutdownNow();
     }
 
