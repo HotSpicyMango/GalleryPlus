@@ -26,10 +26,15 @@ public class ImageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
 
     private final Context context;
     private final List<Object> items;
+    private boolean sortDescending = true;
 
     public ImageAdapter(Context context, List<Object> items) {
         this.context = context;
         this.items = items;
+    }
+
+    public void setSortDescending(boolean sortDescending) {
+        this.sortDescending = sortDescending;
     }
 
     @Override
@@ -79,15 +84,9 @@ public class ImageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> 
             imageHolder.itemView.setOnClickListener(v -> {
                 int pos = holder.getAdapterPosition();
                 if (pos != RecyclerView.NO_POSITION) {
-                    ArrayList<Uri> uriList = new ArrayList<>();
-                    for (Object obj : items) {
-                        if (obj instanceof Uri) uriList.add((Uri) obj);
-                    }
-                    int imageIndex = uriList.indexOf(imageUri);
-
                     Intent intent = new Intent(context, FullscreenActivity.class);
-                    intent.putParcelableArrayListExtra("image_uris", uriList);
-                    intent.putExtra("start_position", imageIndex);
+                    intent.putExtra(FullscreenActivity.EXTRA_IMAGE_URI, imageUri.toString());
+                    intent.putExtra(FullscreenActivity.EXTRA_SORT_DESCENDING, sortDescending);
 
                     if (context instanceof Activity) {
                         context.startActivity(intent);

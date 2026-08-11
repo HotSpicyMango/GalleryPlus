@@ -49,6 +49,8 @@ public class MainActivity extends AppCompatActivity {
     private TextView emptyMessageText;
     private MaterialButton emptyActionButton;
     private boolean isDescending = true;
+    private final ExecutorService imageLoadExecutor = Executors.newSingleThreadExecutor();
+    private int imageLoadGeneration = 0;
 
     private GridLayoutManager layoutManager;
     public static int spanCount = 3;
@@ -101,6 +103,7 @@ public class MainActivity extends AppCompatActivity {
 
         sortButton.setOnClickListener(v -> {
             isDescending = !isDescending;
+            imageAdapter.setSortDescending(isDescending);
             sortButton.setText(isDescending ? R.string.sort_latest : R.string.sort_oldest);
             loadImages();
         });
@@ -144,8 +147,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadImages() {
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-        executor.execute(() -> {
+        final int generation = ++imageLoadGeneration;
+        imageLoadExecutor.execute(() -> {
             ArrayList<Object> newItems = new ArrayList<>();
             String[] projection = new String[]{
                     MediaStore.Images.Media._ID,
@@ -196,7 +199,11 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "이미지를 불러오는 중 오류 발생: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                runOnUiThread(() -> {
+                    if (generation == imageLoadGeneration && !isFinishing() && !isDestroyed()) {
+                        Toast.makeText(this, "이미지를 불러오는 중 오류 발생: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    }
+                });
             }
 
             for (Map.Entry<Date, List<Uri>> entry : grouped.entrySet()) {
@@ -213,6 +220,9 @@ public class MainActivity extends AppCompatActivity {
             final int finalTotalImageCount = totalImageCount;
 
             runOnUiThread(() -> {
+                if (generation != imageLoadGeneration || isFinishing() || isDestroyed()) {
+                    return;
+                }
                 replaceItems(newItems);
                 updatePhotoCount(finalTotalImageCount);
                 showGalleryState(!newItems.isEmpty());
@@ -283,6 +293,12 @@ public class MainActivity extends AppCompatActivity {
         }
 
         loadImages();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        imageLoadExecutor.shutdownNow();
     }
 
     private boolean isDarkTheme() {
