@@ -3,14 +3,19 @@ package com.example.mygallery;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DownloadManager;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.Settings;
 import android.widget.Toast;
+
+import androidx.core.content.FileProvider;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -41,6 +46,9 @@ public class GithubUpdateManager {
     private final Activity activity;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final SharedPreferences prefs;
+    private long activeDownloadId = -1L;
+    private File activeDownloadFile;
+    private BroadcastReceiver downloadReceiver;
 
     public GithubUpdateManager(Activity activity) {
         this.activity = activity;
@@ -64,6 +72,7 @@ public class GithubUpdateManager {
 
     public void release() {
         executor.shutdownNow();
+        unregisterDownloadReceiver();
     }
 
     private void checkForUpdates(boolean manual) {
@@ -210,8 +219,8 @@ public class GithubUpdateManager {
             String fileName = releaseInfo.apkName != null && !releaseInfo.apkName.isEmpty()
                     ? releaseInfo.apkName
                     : "GalleryPlus-" + releaseInfo.tagName + ".apk";
-            File downloadFile = new File(activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), fileName);
-            if (downloadFile.exists() && !downloadFile.delete()) {
+            activeDownloadFile = new File(activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), fileName);
+            if (activeDownloadFile.exists() && !activeDownloadFile.delete()) {
                 showToast("기존 업데이트 파일을 삭제할 수 없습니다.");
                 return;
             }
@@ -221,17 +230,110 @@ public class GithubUpdateManager {
                     .setDescription(releaseInfo.tagName + " 다운로드 중")
                     .setMimeType("application/vnd.android.package-archive")
                     .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                    .setDestinationUri(Uri.fromFile(downloadFile));
+                    .setDestinationUri(Uri.fromFile(activeDownloadFile));
 
-            long downloadId = downloadManager.enqueue(request);
+            registerDownloadReceiver();
+            activeDownloadId = downloadManager.enqueue(request);
             prefs.edit()
-                    .putLong(KEY_ACTIVE_DOWNLOAD_ID, downloadId)
-                    .putString(KEY_ACTIVE_DOWNLOAD_FILE, downloadFile.getAbsolutePath())
+                    .putLong(KEY_ACTIVE_DOWNLOAD_ID, activeDownloadId)
+                    .putString(KEY_ACTIVE_DOWNLOAD_FILE, activeDownloadFile.getAbsolutePath())
                     .apply();
             showToast("업데이트 APK 다운로드를 시작했습니다.");
         } catch (Exception e) {
             showToast("다운로드 시작 실패: " + e.getMessage());
         }
+    }
+
+    private void registerDownloadReceiver() {
+        unregisterDownloadReceiver();
+        downloadReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                long downloadId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L);
+                if (downloadId != activeDownloadId) {
+                    return;
+                }
+                handleDownloadComplete(downloadId);
+            }
+        };
+
+        IntentFilter filter = new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            activity.registerReceiver(downloadReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            activity.registerReceiver(downloadReceiver, filter);
+        }
+    }
+
+    private void unregisterDownloadReceiver() {
+        if (downloadReceiver == null) {
+            return;
+        }
+
+        try {
+            activity.unregisterReceiver(downloadReceiver);
+        } catch (IllegalArgumentException ignored) {
+            // Receiver was already unregistered.
+        }
+        downloadReceiver = null;
+    }
+
+    private void handleDownloadComplete(long downloadId) {
+        unregisterDownloadReceiver();
+
+        DownloadManager downloadManager = (DownloadManager) activity.getSystemService(Context.DOWNLOAD_SERVICE);
+        if (downloadManager == null) {
+            showToast("다운로드 상태를 확인할 수 없습니다.");
+            return;
+        }
+
+        DownloadManager.Query query = new DownloadManager.Query().setFilterById(downloadId);
+        try (Cursor cursor = downloadManager.query(query)) {
+            if (cursor == null || !cursor.moveToFirst()) {
+                showToast("다운로드 결과를 찾을 수 없습니다.");
+                return;
+            }
+
+            int status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+            if (status != DownloadManager.STATUS_SUCCESSFUL) {
+                showToast("업데이트 APK 다운로드에 실패했습니다.");
+                return;
+            }
+        }
+
+        prefs.edit()
+                .remove(KEY_ACTIVE_DOWNLOAD_ID)
+                .remove(KEY_ACTIVE_DOWNLOAD_FILE)
+                .apply();
+
+        if (activeDownloadFile == null || !activeDownloadFile.exists()) {
+            showToast("다운로드된 APK 파일을 찾을 수 없습니다.");
+            return;
+        }
+
+        installApk(activeDownloadFile);
+    }
+
+    private void installApk(File apkFile) {
+        if (!canRequestPackageInstalls()) {
+            openUnknownAppInstallSettings();
+            return;
+        }
+
+        Uri apkUri = FileProvider.getUriForFile(
+                activity,
+                activity.getPackageName() + ".fileprovider",
+                apkFile
+        );
+        Intent intent = new Intent(Intent.ACTION_VIEW)
+                .setDataAndType(apkUri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+        if (intent.resolveActivity(activity.getPackageManager()) == null) {
+            showToast("APK 설치 화면을 열 수 없습니다.");
+            return;
+        }
+        activity.startActivity(intent);
     }
 
     private boolean isNewerVersion(String latestVersion, String currentVersion) {
