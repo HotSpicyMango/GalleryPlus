@@ -20,9 +20,6 @@ public class GalleryApplication extends Application {
         registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
             @Override
             public void onActivityStarted(@NonNull Activity activity) {
-                if (startedActivities == 0) {
-                    AuthState.markForegrounded();
-                }
                 startedActivities++;
             }
 

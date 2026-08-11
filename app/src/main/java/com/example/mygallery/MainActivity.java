@@ -272,6 +272,7 @@ public class MainActivity extends AppCompatActivity {
 
         if (AuthState.shouldRequireUnlock()) {
             Intent intent = new Intent(this, LockActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
             startActivity(intent);
             return;
         }
